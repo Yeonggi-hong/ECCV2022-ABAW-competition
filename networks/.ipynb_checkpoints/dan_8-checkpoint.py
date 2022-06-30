@@ -1,4 +1,3 @@
-# +
 from torch import nn
 from torch.nn import functional as F
 import torch
@@ -6,12 +5,11 @@ import torch.nn.init as init
 from torchvision import models
 
 import networks.resnet as ResNet
+import numpy as np
 
-
-# -
 
 class DAN(nn.Module):
-    def __init__(self, num_head, num_class=8, pretrained=True):
+    def __init__(self, num_class=7,num_head=4, pretrained=True):
         super(DAN, self).__init__()
         
         resnet = models.resnet18(pretrained)
@@ -36,29 +34,24 @@ class DAN(nn.Module):
             heads.append(getattr(self,"cat_head%d" %i)(x))
         
         heads = torch.stack(heads).permute([1,0,2])
-        
-        #6class
-        return x, heads
-        
-        '''
-        #8class
         if heads.size(1)>1:
-            heads = F.log_softmax(heads,dim=1)            
+            heads = F.log_softmax(heads,dim=1)
+            
         out = self.fc(heads.sum(dim=1))
-        out = self.bn(out)   
+        out = self.bn(out)
+   
         return out, x, heads
-        '''
 
 
 class DAN_ab(nn.Module):
-    def __init__(self,  num_head, pretrained, num_class=6):
+    def __init__(self,  num_head, num_class, pretrained):
         super(DAN_ab, self).__init__()
         
 
-        self.num_class = num_class
-        #include_top = True 
+        
+        include_top = True 
         #resnet = ResNet.resnet50(pretrained_checkpoint_path="./models/resnet50_scratch_weight.pkl", num_classes=N_IDENTITY, include_top=include_top)
-        resnet = ResNet.resnet50(pretrained_checkpoint_path="./models/resnet50_ft_weight.pkl", num_classes=8631, include_top=True)
+        resnet = ResNet.resnet50(pretrained_checkpoint_path="./models/resnet50_ft_weight.pkl", num_classes=8631, include_top=include_top)
 
         #resnet = SeNet.senet50(pretrained_checkpoint_path="./models/senet50_scratch_weight.pkl", num_classes=N_IDENTITY, include_top=include_top)
         self.features = nn.Sequential(*list(resnet.children())[:-1])
@@ -74,25 +67,14 @@ class DAN_ab(nn.Module):
             nn.BatchNorm2d(512),
             nn.ReLU(),
         )
-        
-        #6class
-        self.fc = nn.Linear(512, self.num_class)
-        self.bn = nn.BatchNorm1d(self.num_class)
-        
-        self.model = DAN(num_class=8, num_head = num_head , pretrained=pretrained)
+        #self.fc1 = 
+        self.model = DAN(num_class = num_class, num_head = num_head , pretrained=pretrained)
         
         if pretrained :
-            print("Load pre-trained weights ...")
-
-            #checkpoint = torch.load('./models/affecnet8_epoch5_acc0.6209.pth')
-            checkpoint = torch.load('./checkpoints/pretrain/scratch/model_7th_model_batch_1024_pretrained_False_f1_0.23642726844296957.pth')
-            #self.model.load_state_dict(checkpoint['model_state_dict'], strict=True)
-            self.model.load_state_dict(checkpoint['model_state_dict'], False)
-
-            print("Done !!")
-
+            checkpoint = torch.load('./models/affecnet8_epoch5_acc0.6209.pth')
+            self.model.load_state_dict(checkpoint['model_state_dict'], strict = False)
         self.dan=nn.Sequential(*list(self.model.children()))
-        
+        #print('dan',self.dan)
 
     def forward(self, x):
         x=self.features(x)
@@ -101,13 +83,8 @@ class DAN_ab(nn.Module):
         # print(np.shape(x))
         x=self.conv1x1_2(x)
         #print(np.shape(x))
-        
-        #6class
-        x,heads=self.model(x)
-        out = self.fc(heads.sum(dim=1))
-        out = self.bn(out)
-        
-
+        out,x,heads=self.model(x)
+       
         return out, x, heads
 
 
@@ -170,6 +147,7 @@ class SpatialAttention(nn.Module):
         
         return out 
 
+
 class ChannelAttention(nn.Module):
 
     def __init__(self):
@@ -191,4 +169,5 @@ class ChannelAttention(nn.Module):
         out = sa * y
         
         return out
+
 
