@@ -1,11 +1,11 @@
 # ECCV-ABAW-competition
 
-######First, note that previous code has been stored in our 5 server abaw_4th/DAN/prev_coder
+First, note that previous code has been stored in our 5 server abaw_4th/DAN/prev_coder
 
-#Pretrain code
+# Pretrain code
 
-##1. VGGFace2(ResNet50) + DAN(attention)
+1. VGGFace2(ResNet50) + DAN(attention)
 
-##2. DINO(ResNet50)
+2. DINO(ResNet50)
 
-##3. DINO(ResNet50) + DAN(attention)
+3. DINO(ResNet50) + DAN(attention)
