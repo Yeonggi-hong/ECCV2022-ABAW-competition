@@ -12,3 +12,6 @@ in .networks/, there are some codes that are related to deep model architecture.
 2. DINO(ResNet50)
 
 3. DINO(ResNet50) + DAN(attention)
+
+
+Sumin/Jiyeon if you have any question about code and experiment process please let me know. ㅋㅋ
