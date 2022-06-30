@@ -1,0 +1,186 @@
+# +
+from torch import nn
+from torch.nn import functional as F
+import torch
+import torch.nn.init as init
+from torchvision import models
+
+import networks.resnet as ResNet
+
+# -
+
+class DAN(nn.Module):
+    def __init__(self, num_head, num_class=8, pretrained=True):
+        super(DAN, self).__init__()
+        
+        resnet = models.resnet18(pretrained)
+        
+        if pretrained:
+            checkpoint = torch.load('./models/resnet18_msceleb.pth')
+            resnet.load_state_dict(checkpoint['state_dict'],strict=True)
+
+        self.features = nn.Sequential(*list(resnet.children())[:-2])
+        self.num_head = num_head
+        for i in range(num_head):
+            setattr(self,"cat_head%d" %i, CrossAttentionHead())
+        self.sig = nn.Sigmoid()
+        self.fc = nn.Linear(512, num_class)
+        self.bn = nn.BatchNorm1d(num_class)
+
+
+    def forward(self, x):
+        #x = self.features(x)
+        heads = []
+        for i in range(self.num_head):
+            heads.append(getattr(self,"cat_head%d" %i)(x))
+        
+        heads = torch.stack(heads).permute([1,0,2])
+        
+        #6class
+        return x, heads
+
+
+class DAN_ab(nn.Module):
+    def __init__(self,  num_head, pretrained, num_class=7):
+        super(DAN_ab, self).__init__()
+        
+
+        self.num_class = num_class
+        #include_top = True 
+        #resnet = ResNet.resnet50(pretrained_checkpoint_path="./models/resnet50_scratch_weight.pkl", num_classes=N_IDENTITY, include_top=include_top)
+        resnet = ResNet.resnet50(pretrained_checkpoint_path="./models/resnet50_ft_weight.pkl", num_classes=8631, include_top=True)
+
+        #resnet = SeNet.senet50(pretrained_checkpoint_path="./models/senet50_scratch_weight.pkl", num_classes=N_IDENTITY, include_top=include_top)
+        self.features = nn.Sequential(*list(resnet.children())[:-1])
+        #print(self.features)
+        
+        self.conv1x1_1 = nn.Sequential(
+            nn.Conv2d(2048, 1024, kernel_size=1),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(),
+        )
+        self.conv1x1_2 = nn.Sequential(
+            nn.Conv2d(1024, 512, kernel_size=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+        )
+        
+        #6class
+        self.fc = nn.Linear(512, self.num_class)
+        self.bn = nn.BatchNorm1d(self.num_class)
+        
+        self.model = DAN(num_class=8, num_head = num_head , pretrained=pretrained)
+        
+        if pretrained :
+            print("Load pre-trained weights ...")
+
+            checkpoint = torch.load('./models/affecnet8_epoch5_acc0.6209.pth')
+            self.model.load_state_dict(checkpoint['model_state_dict'], strict=True)
+
+            print("Done !!")
+
+        self.dan=nn.Sequential(*list(self.model.children()))
+        
+
+    def forward(self, x):
+        x=self.features(x)
+        # print(np.shape(x))
+        x=self.conv1x1_1(x) 
+        # print(np.shape(x))
+        x=self.conv1x1_2(x)
+        #print(np.shape(x))
+        
+        #6class
+        x,heads=self.model(x)
+        out = self.fc(heads.sum(dim=1))
+        out = self.bn(out)
+        
+        '''
+        #8class
+        out, x, heads = self.model(x)
+        '''
+
+        return out, x, heads
+
+
+class CrossAttentionHead(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.sa = SpatialAttention()
+        self.ca = ChannelAttention()
+        self.init_weights()
+
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+    def forward(self, x):
+        sa = self.sa(x)
+        ca = self.ca(sa)
+
+        return ca
+
+
+class SpatialAttention(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.conv1x1 = nn.Sequential(
+            nn.Conv2d(512, 256, kernel_size=1),
+            nn.BatchNorm2d(256),
+        )
+        self.conv_3x3 = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=3,padding=1),
+            nn.BatchNorm2d(512),
+        )
+        self.conv_1x3 = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=(1,3),padding=(0,1)),
+            nn.BatchNorm2d(512),
+        )
+        self.conv_3x1 = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=(3,1),padding=(1,0)),
+            nn.BatchNorm2d(512),
+        )
+        self.relu = nn.ReLU()
+
+
+    def forward(self, x):
+        y = self.conv1x1(x)
+        y = self.relu(self.conv_3x3(y) + self.conv_1x3(y) + self.conv_3x1(y))
+        y = y.sum(dim=1,keepdim=True) 
+        out = x*y
+        
+        return out 
+
+class ChannelAttention(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.gap = nn.AdaptiveAvgPool2d(1)
+        self.attention = nn.Sequential(
+            nn.Linear(512, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(inplace=True),
+            nn.Linear(32, 512),
+            nn.Sigmoid()    
+        )
+
+
+    def forward(self, sa):
+        sa = self.gap(sa)
+        sa = sa.view(sa.size(0),-1)
+        y = self.attention(sa)
+        out = sa * y
+        
+        return out
+
