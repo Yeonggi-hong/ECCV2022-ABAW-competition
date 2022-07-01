@@ -51,15 +51,16 @@ def run_training():
         
         from networks.models import DINO
         if pretrain_flag:
-            model = DINO("../models/dino_resnet50_40epoch.pth", "student", "resnet50", 8, args.num_class)
+            model = DINO("./models/dino_resnet50_40epoch.pth", "student", "resnet50", 8, args.num_class)
         else:
-            model = DINO("../models/dino_resnet50_40epoch.pth", "taecher", "resnet50", 8, args.num_class)
+            model = DINO("./models/dino_resnet50_40epoch.pth", "taecher", "resnet50", 8, args.num_class)
         params = list(model.parameters())
 
     elif args.model == "DINO_DAN" :
         from networks.loss import AffinityLoss, PartitionLoss
         from networks.models import DINO_DAN
-        model = DINO_DAN("../models/dino_resnet50_40epoch.pth", "student", "resnet50", 8, pretrained = pretrain_flag, num_head = args.num_head, num_class = args.num_class)
+        model = DINO_DAN("./models/dino_resnet50_40epoch.pth", "student", "resnet50", 8, pretrained = pretrain_flag, num_head = args.num_head, num_class = args.num_class)
+        
         criterion_af = AffinityLoss(device, num_class=args.num_class)
         criterion_pt = PartitionLoss()
         params = list(model.parameters()) + list(criterion_af.parameters())
