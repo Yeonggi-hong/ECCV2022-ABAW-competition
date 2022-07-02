@@ -43,32 +43,40 @@ def run_training():
         pretrain_flag = True
     else :
         pretrain_flag = False
-    weight_name = str(args.num_class) + "_class_pretrain+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
-    plt_name = str(args.num_class) + "_class_pretrain+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
+    weight_name = str(args.num_class) + "_class_finetuning+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
+    plt_name = str(args.num_class) + "_class_finetuning+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
     print(weight_name)
     print(plt_name)
     if args.model == "DINO" :
         
-        from networks.models import DINO
-        if pretrain_flag:
-            model = DINO("./models/dino_resnet50_40epoch.pth", "student", "resnet50", 8, args.num_class)
-        else:
-            model = DINO("./models/dino_resnet50_40epoch.pth", "taecher", "resnet50", 8, args.num_class)
-        params = list(model.parameters())
-
-    elif args.model == "DINO_DAN" :
-        from networks.loss import AffinityLoss, PartitionLoss
-        from networks.models import DINO_DAN
-        model = DINO_DAN("./models/dino_resnet50_40epoch.pth", "student", "resnet50", 8, pretrained = pretrain_flag, num_head = args.num_head, num_class = args.num_class)
+        from networks.models import Finetuning_models
+        # true is student, false is teacher, but in the case of finetuning, all DINO models is student
+        if args.num_class == 6:
+            model = Finetuning_models(model_name = "DINO", 
+                            pretrained_weights = "../tmp_models/10epoch_selftrainvalsplit_6_class_pretrain+DINO_model_num_head_4_weightinit_True.pth", 
+                            checkpoint_key = "student", arch = "resnet50", patch_size = 8, num_class = args.num_class)
+        else :
+            model = Finetuning_models(model_name = "DINO", 
+                            pretrained_weights = "../tmp_models/5epoch_selftrainvalsplit_8_class_pretrain+DINO_model_num_head_4_weightinit_True.pth", 
+                            checkpoint_key = "student", arch = "resnet50", patch_size = 8, num_class = args.num_class)
         
-        criterion_af = AffinityLoss(device, num_class=args.num_class)
-        criterion_pt = PartitionLoss()
-        params = list(model.parameters()) + list(criterion_af.parameters())
+
+        params = list(model.parameters())
 
     else :
         from networks.loss import AffinityLoss, PartitionLoss
-        from networks.models import VGGFACE2_DAN
-        model = VGGFACE2_DAN(pretrained = pretrain_flag, num_head = args.num_head, num_class = args.num_class)
+        from networks.models import Finetuning_models
+        if args.num_class == 6:
+            model = Finetuning_models(model_name = "VGGFACE_DAN", 
+                            pretrained_weights = "../tmp_models/3epoch_selftrainvalsplit_6_class_pretrain+VGGFACE_DAN_model_num_head_4_weightinit_True.pth", 
+                            num_class = args.num_class,
+                            num_head = args.num_head)
+        else :
+            model = Finetuning_models(model_name = "VGGFACE_DAN",
+                            pretrained_weights = "../tmp_models/4epoch_selftrainvalsplit_8_class_pretrain+VGGFACE_DAN_model_num_head_4_weightinit_False.pth", 
+                            num_class = args.num_class,
+                            num_head = args.num_head)
+        
         criterion_af = AffinityLoss(device, num_class=args.num_class)
         criterion_pt = PartitionLoss()
         params = list(model.parameters()) + list(criterion_af.parameters())
@@ -290,10 +298,10 @@ def run_training():
         target_names=['Neutral', 'Anger', 'Disgust', 'Fear', 'Happy', 'Sadness', 'Surprise', 'Other'], cmap=None, normalize=True, labels=True, title=None)
 
     #os.path.exists('../result/csv/')
-    if not os.path.exists('../result/csv/pretrain.csv'):
-        best_history.to_csv('../result/csv/pretrain.csv', mode='w', header=True, index=False)
+    if not os.path.exists('../result/csv/finetuning.csv'):
+        best_history.to_csv('../result/csv/finetuning.csv', mode='w', header=True, index=False)
     else:
-        best_history.to_csv('../result/csv/pretrain.csv', mode='a', header=False, index=False)
+        best_history.to_csv('../result/csv/finetuning.csv', mode='a', header=False, index=False)
     
     
 if __name__ == "__main__":                    
