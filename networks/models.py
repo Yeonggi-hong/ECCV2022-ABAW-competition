@@ -1,6 +1,7 @@
 # +
 
 import math
+from re import X
 import networks.utils as utils
 import networks.models_utils as models_utils
 import numpy as np
@@ -29,7 +30,7 @@ class DAN(nn.Module):
         resnet = models.resnet18(pretrained)
         
         if pretrained:
-            checkpoint = torch.load('./models/resnet18_msceleb.pth')
+            checkpoint = torch.load('../models/resnet18_msceleb.pth')
             resnet.load_state_dict(checkpoint['state_dict'], strict = True)
 
         self.features = nn.Sequential(*list(resnet.children())[:-2])
@@ -61,7 +62,7 @@ class VGGFACE2_DAN(nn.Module):
         self.num_head = num_head
         self.pretrained = pretrained
         
-        resnet = resnet50(pretrained_checkpoint_path="./models/resnet50_ft_weight.pkl", num_classes=8631, include_top=True)
+        resnet = resnet50(pretrained_checkpoint_path="../models/resnet50_ft_weight.pkl", num_classes=8631, include_top=True)
 
         self.features = nn.Sequential(*list(resnet.children())[:-1])
         
@@ -76,15 +77,15 @@ class VGGFACE2_DAN(nn.Module):
             nn.ReLU(),
         )
         
-        self.fc = nn.Linear(512, self.num_class)
-        self.bn = nn.BatchNorm1d(self.num_class)
+        
         
         self.model = DAN(num_class = 8, num_head = self.num_head , pretrained = self.pretrained)
-        
+        self.fc = nn.Linear(512, self.num_class)
+        self.bn = nn.BatchNorm1d(self.num_class)
         if pretrained :
             print("Load pre-trained weights ...")
 
-            checkpoint = torch.load('./models/affecnet8_epoch5_acc0.6209.pth')
+            checkpoint = torch.load('../models/affecnet8_epoch5_acc0.6209.pth')
             self.model.load_state_dict(checkpoint['model_state_dict'], strict = True)
 
             print("Done !!")
@@ -93,7 +94,7 @@ class VGGFACE2_DAN(nn.Module):
         
 
     def forward(self, x):
-
+        #print(np.shape(x))
         x=self.features(x)
         
         x=self.conv1x1_1(x) 
@@ -103,7 +104,6 @@ class VGGFACE2_DAN(nn.Module):
 
         out = self.fc(heads.sum(dim=1))
         out = self.bn(out)
-        
 
         return out, x, heads
 
@@ -383,8 +383,9 @@ class DINO(nn.Module):
         self.model = models.resnet50(num_classes=self.num_class)
         self.fc = nn.Linear(2048, self.num_class, bias=True)
         #print(self.model)
-        utils.dino_load_pretrained_weights(self.model, self.pretrained_checkpoint_path, self.checkpoint_key, self.arch, self.patch_size)
-        
+        if self.pretrained_checkpoint_path is not None:
+            utils.dino_load_pretrained_weights(self.model, self.pretrained_checkpoint_path, self.checkpoint_key, self.arch, self.patch_size)
+        #print(self.model)
 
 
 
@@ -413,7 +414,8 @@ class DINO_DAN(nn.Module):
         
         
         #print(self.features)
-        utils.dino_load_pretrained_weights(self.features, self.pretrained_checkpoint_path, self.checkpoint_key, self.arch, self.patch_size)
+        if self.pretrained_checkpoint_path is not None :
+            utils.dino_load_pretrained_weights(self.features, self.pretrained_checkpoint_path, self.checkpoint_key, self.arch, self.patch_size)
         self.features = self.features[:-1]
 
         self.conv1x1_1 = nn.Sequential(
@@ -435,7 +437,7 @@ class DINO_DAN(nn.Module):
         if pretrained :
             print("Load pre-trained weights ...")
 
-            checkpoint = torch.load('./models/affecnet8_epoch5_acc0.6209.pth')
+            checkpoint = torch.load('../models/affecnet8_epoch5_acc0.6209.pth')
             self.model.load_state_dict(checkpoint['model_state_dict'], strict = True)
 
             print("Done !!")
@@ -455,3 +457,76 @@ class DINO_DAN(nn.Module):
         out = self.bn(out)
         
         return out, x, heads
+
+
+class Finetuning_models(nn.Module) :
+    def __init__(self, model_name=None, pretrained_weights=None, checkpoint_key=None, arch=None, patch_size=None, num_class=None, pretrained=None, num_head=None) :
+        super(Finetuning_models, self).__init__() 
+        self.model_name = model_name
+        self.pretrained_weights = pretrained_weights
+        self.pretrained_model_num_class = num_class
+        self.pretrained = pretrained
+        self.model = None
+       
+        if self.model_name == "DINO" :
+            print(self.pretrained_weights)
+            self.checkpoint_key = checkpoint_key
+            self.arch = arch
+            self.patch_size = patch_size
+            print("Loading pretrain model of DINO for finetuning ...")
+    
+            self.model = models.resnet50(num_classes = 6)
+            
+            utils.dino_load_pretrained_weights(self.model, self.pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
+            print("Done !")
+            #print(self.model)
+            '''
+            
+            '''
+        else :
+            from collections import OrderedDict
+            print(self.pretrained_weights)
+            self.num_head = num_head 
+            self.model = VGGFACE2_DAN(self.num_head, False, self.pretrained_model_num_class)
+            checkpoint = torch.load(self.pretrained_weights)
+            
+            state_dict = checkpoint['model_state_dict']
+            new_state_dict = OrderedDict() 
+            for k, v in state_dict.items(): 
+                name = k[7:] 
+                new_state_dict[name] = v 
+            self.model.load_state_dict(new_state_dict, strict = True)
+            
+            #if self.pretrained_model_num_class == 8 :
+            #self.model = nn.Sequential(*(list(self.model.children())))
+            #self.model = self.model[:-1]
+            #print(self.model)
+            self.fc =  nn.Linear(512, 6) 
+            self.bn = nn.BatchNorm1d(6)   
+            #print(self.model)
+            
+            #print(self.model)
+            
+            
+    
+    def forward(self, x) :
+        
+
+        if self.model_name == "DINO" :
+            x = self.model(x)    
+            return x
+        else:
+            out, feat, heads = self.model(x)
+            #print(heads)
+            if self.pretrained_model_num_class == 8 :
+                out = self.fc(heads.sum(dim=1))
+                out = self.bn(out)
+                #print(np.shape(out))
+                #x = self.fc(out)
+                return out, feat, heads
+            else :
+                #x = self.fc(out)
+                return out, feat, heads
+     
+
+  
