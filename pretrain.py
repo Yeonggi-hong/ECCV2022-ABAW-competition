@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=1500, help='Batch size.')
     parser.add_argument('--lr', type=float, default=0.0001, help='Initial learning rate for adam.')
     parser.add_argument('--workers', default=8, type=int, help='Number of data loading workers.')
-    parser.add_argument('--epochs', type=int, default=10, help='Total training epochs.')
+    parser.add_argument('--epochs', type=int, default=20, help='Total training epochs.')
     parser.add_argument('--num_head', type=int, default=4, help='Number of attention head.')
     parser.add_argument('--num_class', type=int, default=6, help='Number of class.')
     parser.add_argument('--pretrained', type=str, default=True ,help = 'pretrained model')
@@ -43,23 +43,26 @@ def run_training():
         pretrain_flag = True
     else :
         pretrain_flag = False
-    weight_name = str(args.num_class) + "_class_pretrain+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
-    plt_name = str(args.num_class) + "_class_pretrain+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
+    weight_name = "AIHUB_AFF_EXP_selftrainvalsplit_" + str(args.num_class) + "_class_pretrain+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
+    plt_name = "AIHUB_AFF_EXP_selftrainvalsplit_" + str(args.num_class) + "_class_pretrain+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
     print(weight_name)
     print(plt_name)
     if args.model == "DINO" :
         
         from networks.models import DINO
         if pretrain_flag:
+            # true is student, false is teacher, but in the case of finetuning, all DINO models is student
             model = DINO("../models/dino_resnet50_40epoch.pth", "student", "resnet50", 8, args.num_class)
         else:
-            model = DINO("../models/dino_resnet50_40epoch.pth", "taecher", "resnet50", 8, args.num_class)
+            print("DINO teacher arch are deprecated")
+            return 0
+            #model = DINO("../models/dino_resnet50_40epoch.pth", "taecher", "resnet50", 8, args.num_class)
         params = list(model.parameters())
 
     elif args.model == "DINO_DAN" :
         from networks.loss import AffinityLoss, PartitionLoss
         from networks.models import DINO_DAN
-        model = DINO_DAN("../models/dino_resnet50_40epoch.pth", "student", "resnet50", 8, pretrained = pretrain_flag, num_head = args.num_head, num_class = args.num_class)
+        model = DINO_DAN("../models/dino_resnet50_60epoch.pth", "student", "resnet50", 8, pretrained = pretrain_flag, num_head = args.num_head, num_class = args.num_class)
         criterion_af = AffinityLoss(device, num_class=args.num_class)
         criterion_pt = PartitionLoss()
         params = list(model.parameters()) + list(criterion_af.parameters())
@@ -68,6 +71,7 @@ def run_training():
         from networks.loss import AffinityLoss, PartitionLoss
         from networks.models import VGGFACE2_DAN
         model = VGGFACE2_DAN(pretrained = pretrain_flag, num_head = args.num_head, num_class = args.num_class)
+        #print(model)
         criterion_af = AffinityLoss(device, num_class=args.num_class)
         criterion_pt = PartitionLoss()
         params = list(model.parameters()) + list(criterion_af.parameters())
@@ -86,31 +90,47 @@ def run_training():
     train_dataset = datasets.ImageFolder(f'{args.data_path}/train/', transform = data_transforms)   # loading statically
 
     print('Whole train set size:', train_dataset.__len__())
-    train_loader = torch.utils.data.DataLoader(train_dataset,
+    
+    n_val = int(np.floor(0.3 * len(train_dataset))) # 7/3 split
+    n_train = len(train_dataset) - n_val
+    print(n_val, n_train)
+    #dl_args = dict(batch_size=args.batch_size, num_workers=args.workers)
+    train_ds, val_ds = torch.utils.data.random_split(train_dataset, [n_train, n_val], generator=torch.Generator().manual_seed(42))
+    #train_dl = torch.utils.data.DataLoader(train_ds, **dl_args)
+    #valid_dl = torch.utils.data.DataLoader(val_ds , **dl_args)
+    print(train_ds.__len__())
+    print(val_ds.__len__())
+    train_loader = torch.utils.data.DataLoader(train_ds,
                                                batch_size = args.batch_size,
                                                num_workers = args.workers,
-                                               sampler=ImbalancedDatasetSampler(train_dataset),
+                                               sampler=ImbalancedDatasetSampler(train_ds),
                                                shuffle = False, 
                                                pin_memory = True,
                                                drop_last=True)
+    
 
+    val_loader = torch.utils.data.DataLoader(val_ds,
+                                               batch_size = args.batch_size,
+                                               num_workers = args.workers,
+                                               shuffle = False,  
+                                               pin_memory = True,
+                                               drop_last=True)
+    
+    print(train_loader.__len__())
+    print(val_loader.__len__())
+    '''
     data_transforms_val = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])])      
 
-    val_dataset = datasets.ImageFolder(f'{args.data_path}/val/', transform = data_transforms_val)    # loading statically
+    #val_dataset = datasets.ImageFolder(f'{args.data_path}/val/', transform = data_transforms_val)    # loading statically
 
-    print('Validation set size:', val_dataset.__len__())
+    #print('Validation set size:', val_dataset.__len__())
     
-    val_loader = torch.utils.data.DataLoader(val_dataset,
-                                               batch_size = args.batch_size,
-                                               num_workers = args.workers,
-                                               shuffle = False,  
-                                               pin_memory = True,
-                                               drop_last=True)
-
+    
+    '''
 
     # Set Optimizer
     
