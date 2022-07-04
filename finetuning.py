@@ -18,14 +18,17 @@ from networks.loss import FocalLoss
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, default='../3th_dataset/datasets', help='AfectNet dataset path.')
-    parser.add_argument('--batch_size', type=int, default=1500, help='Batch size.')
+    parser.add_argument('--batch_size', type=int, default=512, help='Batch size.')
     parser.add_argument('--lr', type=float, default=0.0001, help='Initial learning rate for adam.')
     parser.add_argument('--workers', default=8, type=int, help='Number of data loading workers.')
-    parser.add_argument('--epochs', type=int, default=10, help='Total training epochs.')
+    parser.add_argument('--epochs', type=int, default=20, help='Total training epochs.')
     parser.add_argument('--num_head', type=int, default=4, help='Number of attention head.')
     parser.add_argument('--num_class', type=int, default=6, help='Number of class.')
     parser.add_argument('--pretrained', type=str, default=True ,help = 'pretrained model')
     parser.add_argument('--model', type=str, default="VGGFACE_DAN" ,help = 'pretrained model')
+    parser.add_argument('--pretrained_weights_path', type=str, default="TMP" ,help = 'pretrained model weights path')
+    parser.add_argument('--opt', type=str, default="TMP" ,help = 'optimizer set')
+    parser.add_argument('--freeze', type=str, default="TMP" ,help = 'freeze ratio')
 
     return parser.parse_args()
 
@@ -43,37 +46,42 @@ def run_training():
         pretrain_flag = True
     else :
         pretrain_flag = False
-    weight_name = str(args.num_class) + "_class_finetuning+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
-    plt_name = str(args.num_class) + "_class_finetuning+"+str(args.model)+"_model_" + "num_head_" + str(args.num_head) + "_weightinit_" + str(args.pretrained)
+        
+    weight_init = args.pretrained_weights_path.split("_")[-1]
+    weight_name = str(args.num_class) + "_class_finetuning_"+str(args.model)+"_model_" + "OPT_" + str(args.opt) +"_FREEZE_" + str(args.freeze) + "_" + args(weight_init)
+    plt_name = str(args.num_class) + "_class_finetuning_"+str(args.model)+"_model_" + "OPT_" + str(args.opt) +"_FREEZE_" + str(args.freeze)  + "_" + args(weight_init)
     print(weight_name)
     print(plt_name)
+    print()
     if args.model == "DINO" :
         
         from networks.models import Finetuning_models
         # true is student, false is teacher, but in the case of finetuning, all DINO models is student
         if args.num_class == 6:
             model = Finetuning_models(model_name = "DINO", 
-                            pretrained_weights = "../tmp_models/10epoch_selftrainvalsplit_6_class_pretrain+DINO_model_num_head_4_weightinit_True.pth", 
+                            pretrained_weights = "../pretrain_checkpoints/" + args.pretrained_weights_path, 
                             checkpoint_key = "student", arch = "resnet50", patch_size = 8, num_class = args.num_class)
         else :
             model = Finetuning_models(model_name = "DINO", 
-                            pretrained_weights = "../tmp_models/5epoch_selftrainvalsplit_8_class_pretrain+DINO_model_num_head_4_weightinit_True.pth", 
+                            pretrained_weights = "../pretrain_checkpoints/" + args.pretrained_weights_path, 
                             checkpoint_key = "student", arch = "resnet50", patch_size = 8, num_class = args.num_class)
         
-
         params = list(model.parameters())
+        
+
+        
 
     else :
         from networks.loss import AffinityLoss, PartitionLoss
         from networks.models import Finetuning_models
         if args.num_class == 6:
             model = Finetuning_models(model_name = "VGGFACE_DAN", 
-                            pretrained_weights = "../tmp_models/3epoch_selftrainvalsplit_6_class_pretrain+VGGFACE_DAN_model_num_head_4_weightinit_True.pth", 
+                            pretrained_weights = "../pretrain_checkpoints/" + args.pretrained_weights_path, 
                             num_class = args.num_class,
                             num_head = args.num_head)
         else :
             model = Finetuning_models(model_name = "VGGFACE_DAN",
-                            pretrained_weights = "../tmp_models/4epoch_selftrainvalsplit_8_class_pretrain+VGGFACE_DAN_model_num_head_4_weightinit_False.pth", 
+                            pretrained_weights = "../pretrain_checkpoints/" + args.pretrained_weights_path, 
                             num_class = args.num_class,
                             num_head = args.num_head)
         
@@ -81,6 +89,19 @@ def run_training():
         criterion_pt = PartitionLoss()
         params = list(model.parameters()) + list(criterion_af.parameters())
     
+    if args.freeze == "half" :
+        print(len(params))
+        i = 0
+        for param  in model.parameters() :
+            if i < len(params)//2 :
+                param.requires_grad = False
+            else :
+                param.requires_grad = True
+            i+=1
+    else :
+        for param  in model.parameters() :
+            param.requires_grad = True
+
     criterion_cls = FocalLoss()
     model.to(device)
         
@@ -122,8 +143,10 @@ def run_training():
 
 
     # Set Optimizer
-    
-    optimizer = torch.optim.Adam(params,args.lr,weight_decay = 0)
+    if args.opt == "ADAM" :
+        optimizer = torch.optim.Adam(params,args.lr,weight_decay = 0)
+    else :
+        optimizer = torch.optim.SGD(params,lr=args.lr, weight_decay = 0, momentum=0.9)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma = 0.6)
     
     
@@ -169,7 +192,7 @@ def run_training():
                 p_.append(p.cpu())
                 t_.append(t.cpu())
 
-        f1=[]
+        f1 = []
         temp_exp_pred = np.array(p_)
         temp_exp_target = np.array(t_)
         temp_exp_pred = torch.eye(args.num_class)[temp_exp_pred]
@@ -284,19 +307,21 @@ def run_training():
                              'optimizer_state_dict': optimizer.state_dict()}
     print(history)
     torch.save(best_model_info,
-                "../pretrain_checkpoints/"+best_epoch+"epoch_"+weight_name+".pth")
+                "../finetuning_checkpoints/"+best_epoch+"epoch_"+weight_name+".pth")
     tqdm.write('Model saved.')
 
     save_plt(plt_name, history)
     #save_pickle(plt_name+'.pickle', history)
-
+    plot_confusion_matrix(cm, plt_name, 
+    target_names=['Anger', 'Disgust', 'Fear', 'Happy', 'Sadness', 'Surprise'], cmap=None, normalize=True, labels=True, title=None)
+    '''
     if args.num_class == 6 :
         plot_confusion_matrix(cm, plt_name, 
         target_names=['Anger', 'Disgust', 'Fear', 'Happy', 'Sadness', 'Surprise'], cmap=None, normalize=True, labels=True, title=None)
     else :
         plot_confusion_matrix(cm, plt_name, 
         target_names=['Neutral', 'Anger', 'Disgust', 'Fear', 'Happy', 'Sadness', 'Surprise', 'Other'], cmap=None, normalize=True, labels=True, title=None)
-
+    '''
     #os.path.exists('../result/csv/')
     if not os.path.exists('../result/csv/finetuning.csv'):
         best_history.to_csv('../result/csv/finetuning.csv', mode='w', header=True, index=False)
