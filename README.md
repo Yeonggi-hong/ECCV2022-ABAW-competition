@@ -22,6 +22,9 @@ We conducted the task on Learning from Synthesis Data (LSD).
 ### Reference, 
 
 https://github.com/cydonia999/VGGFace2-pytorch
+
 https://github.com/yaoing/DAN
+
 https://github.com/facebookresearch/dino
+
 https://github.com/apple/ml-cvnets
