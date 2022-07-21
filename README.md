@@ -1,6 +1,8 @@
 # ECCV-ABAW-competition
 
-First, note that previous code has been stored in our 5 server abaw_4th/DAN/prev_coder/
+This git repo is the code of IXLab at Seoul National University of Science and Technology from South Korea
+
+We conducted the task on Learning from Synthesis Data (LSD).
 
 # Pretrain code
 ### mixaug code
