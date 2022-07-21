@@ -18,10 +18,10 @@ First, note that previous code has been stored in our 5 server abaw_4th/DAN/prev
    python test.py --testconfig test.txt --test_path /path/to/test/ --model /path/to/model/
 ```
 ### Our architectures, 
-1. VGGFace2(ResNet50) + DAN(attention)
+1. VGGFace2(ResNet50) , DAN(attention)
 
-2. DINO(ResNet50) + DAN(attention)
+2. DINO(ResNet50) , DAN(attention)
 
-3. MobileVitv2 + DAN(attention)
+3. MobileVITv2 , DAN(attention)
 
 
