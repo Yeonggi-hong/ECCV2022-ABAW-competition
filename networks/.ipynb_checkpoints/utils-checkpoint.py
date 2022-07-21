@@ -242,7 +242,7 @@ def get_eq(pred, out) :
 
 def save_plt(model_name, model_info) :
     print("Save plt ...")
-    path = "../mixaug_result/plt/"
+    path = "../finetuning_result/plt/"
     isexist_ = isexist(path)
     print(isexist_)
     if isexist_ is False:
@@ -268,11 +268,9 @@ def save_plt(model_name, model_info) :
 
     print("Done !")
 
-
-
 def plot_confusion_matrix(cm, model_name, target_names=None, cmap=None, normalize=True, labels=True, title=None):
     print("Save CM ...")
-    path = "../mixaug_result/cm/"
+    path = "../finetuning_result/cm/"
     isexist_ = isexist(path)
     print(isexist_)
     if isexist_ is False:
@@ -327,51 +325,3 @@ def save_pickle(pickle_name, history):
     with open(path+pickle_name, 'wb') as f:
         pickle.dump(history, f)
     print("Done !")
-
-
-def mixup_data(x, y, alpha=0.1, use_cuda=True):
-    '''Returns mixed inputs, pairs of targets, and lambda'''
-    if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    batch_size = x.size()[0]
-    if use_cuda:
-        index = torch.randperm(batch_size).cuda()
-    else:
-        index = torch.randperm(batch_size)
-
-    mixed_x = lam * x + (1 - lam) * x[index, :]
-    y_a, y_b = y, y[index]
-    return mixed_x, y_a, y_b, lam
-
-def mixup_criterion(criterion, pred, y_a, y_b, lam):
-    #print(np.shape(pred))
-    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
-
-def mixaug_data(x, y, alpha=0.1, use_cuda=True):
-    '''Returns mixed inputs, pairs of targets, and lambda'''
-    if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    batch_size = x.size()[0]
-    if use_cuda:
-        index = torch.randperm(batch_size).cuda()
-    else:
-        index = torch.randperm(batch_size)
-
-    mixed_x = lam * x + (1 - lam) * x[index, :]
-    y_a, y_b = y, y[index]
-    return mixed_x, x, x[index,:], y_a, y_b, lam 
-
-def mixaug_criterion(criterion, pred,pred_a,pred_b, y_a, y_b, lam):
-    #print(np.shape(pred))
-    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b) + criterion(pred_a,y_a) + criterion(pred_b,y_b)
-
-
-    # model(x1)
-    # model(x2)
-    # model(mixedx)

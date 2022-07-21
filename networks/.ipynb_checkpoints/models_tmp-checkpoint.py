@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # +
 
 from ast import Pass
@@ -23,7 +24,11 @@ def resnet50(**kwargs):
     model = FCL(Bottleneck, [3, 4, 6, 3], **kwargs)
     return model
 
-
+def mtl_resnet50(**kwargs):
+    """Constructs a ResNet-50 model.
+    """
+    model = mtl_FCL(Bottleneck, [3, 4, 6, 3], **kwargs)
+    return model
 class DAN(nn.Module):
     def __init__(self, num_head, num_class=8, pretrained=True):
         super(DAN, self).__init__()
@@ -50,20 +55,21 @@ class DAN(nn.Module):
             heads.append(getattr(self,"cat_head%d" %i)(x))
         
         heads = torch.stack(heads).permute([1,0,2])
-        
+        #print(np.shape(x), np.shape(heads))
         return x, heads
 
 
 class VGGFACE2_DAN(nn.Module):
-    def __init__(self,  num_head, pretrained, num_class):
+    def __init__(self, pretrained_checkpoint_path, num_head, pretrained, num_class):
         super(VGGFACE2_DAN, self).__init__()
         
 
         self.num_class = num_class
         self.num_head = num_head
         self.pretrained = pretrained
+        self.pretrained_checkpoint_path = pretrained_checkpoint_path
         
-        resnet = resnet50(pretrained_checkpoint_path="../models/resnet50_ft_weight.pkl", num_classes=8631, include_top=True)
+        resnet = resnet50(pretrained_checkpoint_path = self.pretrained_checkpoint_path, num_classes = 8631, include_top = True)
 
         self.features = nn.Sequential(*list(resnet.children())[:-1])
         
@@ -95,14 +101,14 @@ class VGGFACE2_DAN(nn.Module):
         
 
     def forward(self, x):
-        #print(np.shape(x))
+        #print("잘들어옴1", np.shape(x))
         x=self.features(x)
-        
+        #print("잘들어옴2", np.shape(x))
         x=self.conv1x1_1(x) 
         x=self.conv1x1_2(x)
         
         x, heads = self.model(x)
-
+        #print(np.shape(x))
         out = self.fc(heads.sum(dim=1))
         out = self.bn(out)
 
@@ -335,14 +341,15 @@ class ResNet(nn.Module):
     def resnet50(**kwargs):
         """Constructs a ResNet-50 model.
         """
-        model = FCL_MTL(Bottleneck, [3, 4, 6, 3], **kwargs)
+        model = FCL(Bottleneck, [3, 4, 6, 3], **kwargs)
         return model
 
-class FCL_MTL(nn.Module) :
-    num_classes = 6
+
+class mtl_FCL(nn.Module) :
     
     def __init__(self, block, layers, pretrained_checkpoint_path, num_classes, include_top=True, freeze_base=True) :
-        super(FCL_MTL, self).__init__()
+        
+        super(mtl_FCL, self).__init__()
         self.pretrained_checkpoint_path = pretrained_checkpoint_path
         
         self.base = ResNet(block, layers, num_classes, include_top)
@@ -350,12 +357,17 @@ class FCL_MTL(nn.Module) :
         self.base.load_from_pretrain(self.base, self.pretrained_checkpoint_path)
         if freeze_base:
             for param in self.base.parameters():
-                #print
                 param.requires_grad = True
         self.base = nn.Sequential(*(list(self.base.children())))
         self.base = self.base[:-1]
-       
+        #self.fc = nn.Linear(512 * block.expansion, 2048, bias=True)
+        #print(self.base)
+        
+        #self.init_weights()
 
+    #def init_weights(self):
+        #models_utils.init_layer(self.fc)
+        
     def load_from_pretrain(self, model, pretrained_checkpoint_path):
         model = utils.load_state_dict(model, pretrained_checkpoint_path)
 
@@ -364,7 +376,7 @@ class FCL_MTL(nn.Module) :
 
     def forward(self, x) :
         x = self.base(x)
-
+        #x = self.fc(x)
         return x
 
 class FCL(nn.Module) :
@@ -606,7 +618,7 @@ class mobile_vit2(nn.Module) :
             #model_state = torch.load(our_pretrined_model_path, map_location="cuda:{}".format(dev_id))
         self.model = get_model(opts)
         #self.model = self.model.to(device=device)
-        print(self.model)
+        #print(self.model)
         #model_state = torch.load(our_pretrined_model_path)
         model_state = torch.load(imagenet_pretrained_model_path)
         if hasattr(self.model, "module"):
@@ -641,6 +653,7 @@ class MTL_classfier(nn.Module):
         
         self.fc = nn.Linear(128, num_class)
         self.bn = nn.BatchNorm1d(num_class)
+
     def forward(self, x1, x2):
         
         out1 = self.sharedfc1(x1)
@@ -695,9 +708,9 @@ class MTL_ResNet18(nn.Module):
         
         return x, heads
 
-class Landmark_ResNet18(nn.Module):
+class landmark_ResNet18(nn.Module):
     def __init__(self,pretrained=True):
-        super(Landmark_ResNet18, self).__init__()
+        super(landmark_ResNet18, self).__init__()
         
         self.resnet = models.resnet18(pretrained)
         
@@ -766,111 +779,189 @@ class Landmark_ResNet50(nn.Module) :
         return x2
 
 class MTL_finetuning(nn.Module) :
-    def __init__(self,em_model_name="RESNET18",lm_model_name="RESNET18", lm_pretrained_weights=None,em_pretrained_weights=None, checkpoint_key=None, arch=None, patch_size=None, 
-                            num_class=None, pretrained=None, num_head=None) :
+    def __init__(self, em_model_name = None, lm_model_name = None, em_pretrained_weights = None, lm_pretrained_weights = None,
+                             checkpoint_key = None, em_arch = None, lm_arch = None, patch_size = None, num_class = None, pretrained = None, num_head = None) :
         super(MTL_finetuning, self).__init__() 
-        self.em_model_name= em_model_name
-        self.lm_model_name= lm_model_name
+        self.em_model_name = em_model_name
+        self.lm_model_name = lm_model_name
+        self.em_pretrained_weights = em_pretrained_weights
+        self.lm_pretrained_weights = lm_pretrained_weights
+        self.num_class = num_class
+        self.pretrained = pretrained
 
         
         if self.em_model_name == "RESNET50" :
-            em_pretrained_weights = "../models/resnet50_ft_weight.pkl"
-        if self.lm_model_name == "RESNET50" :
-            lm_pretrained_weights = "../models/resnet50_ft_weight.pkl"
-        
-        
-        if self.em_model_name == "RESNET50" :
-            self.expr = MTL_ResNet50(num_head=num_head,pretrained_path= em_pretrained_weights)
-        elif self.em_model_name == "DINO_RESNET":
-            
-            self.checkpoint_key = "student"
-            self.arch = "resnet50"
-            self.patch_size = 8
-            print("Loading pretrain model of DINO for finetuning ...")
-    
-            self.model = models.resnet50(num_classes=6)
-            
-            utils.dino_load_pretrained_weights(self.model, em_pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            self.expr = nn.Sequential(*list(self.model.children())[:-1])
-            self.lm.fc(6124,512)
-            print("Done !")
-        elif self.em_model_name == "RESNET18":
-            self.expr = MTL_ResNet18(num_head=num_head, num_class=num_class)
-        elif self.em_model_name == "DINO_VIT":
-#             print(self.pretrained_weights)
+            self.em_feature = VGGFACE2_DAN(pretrained_checkpoint_path=em_pretrained_weights, num_head = 4, pretrained = self.pretrained, num_class = self.num_class)
+
+        elif self.em_model_name == "DINO_RESNET" :
+
+
+
             self.checkpoint_key = checkpoint_key
-            self.arch = arch
+            self.em_arch = lm_arch
             self.patch_size = patch_size
-            print("Loading pretrain model of DINO for finetuning ...")
-    
-            self.expr = vits.__dict__["vit_base"](patch_size=self.patch_size, num_classes=0)
-            self.em_fc = nn.Linear(768,512, bias=True)
-            
-            utils.dino_load_pretrained_weights(self.expr, lm_pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            print("Done !")
-        elif self.em_model_name =="MobileVITv2":
-            self.model = mobile_vit2()
-            self.expr = nn.Sequential(*list(self.model.children())[:-1])
-            self.em_fc = nn.Linear(1024, 512)
-        else:
-            pass
-        
-        if self.lm_model_name == "RESNET50" :
-            self.landmark = Landmark_ResNet50(pretrained_path= lm_pretrained_weights)
-        elif self.lm_model_name == "RESNET18":
-            self.landmark = Landmark_ResNet18()
-        elif self.lm_model_name == "DINO_RESNET":
-            self.checkpoint_key = "student"
-            self.arch = "resnet50"
-            self.patch_size = 8
-            print("Loading pretrain model of DINO for finetuning ...")
-    
-            self.model = models.resnet50(num_classes=6)
-            
-            utils.dino_load_pretrained_weights(self.lm, lm_pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            self.landmark = nn.Sequential(*list(self.lm.children()))[:-1]
-            self.lm_fc(6124,512)
-            print("Done !")
-        
-        elif self.lm_model_name =="MobileVITv2":
-            self.model = mobile_vit2()
-            self.landmark = nn.Sequential(*list(self.model.children()))[:-1]
-            self.lm_fc = nn.Linear(1024, 512)
-        else:
-            pass
 
+            print("Loading pretrain model of DINO for finetuning ...")
+            
+            self.em_feature = models.resnet50(num_classes=512)
+            utils.dino_load_pretrained_weights(self.em_feature, self.em_pretrained_weights, self.checkpoint_key, self.em_arch, self.patch_size)
+    
+            self.em_feature = nn.Sequential(*list(self.em_feature.children())[:-2])
+            self.conv1x1_em = nn.Sequential(
+                nn.Conv2d(2048, 512, kernel_size=1),
+                nn.BatchNorm2d(512),
+                nn.ReLU(),
+            )
+            self.avgpool = nn.AvgPool2d(7, stride=1)
+            
+            print("Done !")
+
+        elif self.em_model_name == "DINO_VIT" :
+            self.checkpoint_key = checkpoint_key
+            self.em_arch = em_arch
+            self.patch_size = patch_size
+
+            print("Loading pretrain model of DINO for finetuning ...")
+            
+            self.em_feature = vits.__dict__["vit_base"](patch_size = self.patch_size, num_classes = 0)
+            self.em_fc = nn.Linear(768, 512)
+            utils.dino_load_pretrained_weights(self.em_feature, self.em_pretrained_weights, self.checkpoint_key, self.em_arch, self.patch_size)
+            print("Done !")
+            
+        elif self.em_model_name == "MobileVITv2" :
+            self.em_feature = mobile_vit2()
+            #print(self.em_feature)
+            self.em_feature = nn.Sequential(*list(self.em_feature.children())[:-1])
+            #print(self.em_feature)
+            self.conv1x1_em = nn.Sequential(
+                nn.Conv2d(1024, 512, kernel_size=1),
+                nn.BatchNorm2d(512),
+                nn.ReLU(),
+            )
+            self.avgpool = nn.AvgPool2d(8, stride=1)
+            self.em_fc = nn.Linear(1024, 512)
+        else :
+            print("No models")
+            pass
+            
+
+
+        if self.lm_model_name == "RESNET50" :
+            self.lm_feature = mtl_resnet50(pretrained_checkpoint_path = self.lm_pretrained_weights, num_classes = 8631, include_top = True)
+            self.conv1x1_lm = nn.Sequential(
+                nn.Conv2d(2048, 512, kernel_size=1),
+                nn.BatchNorm2d(512),
+                nn.ReLU(),
+            )
+
+        elif self.lm_model_name == "DINO_RESNET" :
+            
+            self.checkpoint_key = checkpoint_key
+            self.lm_arch = em_arch
+            self.patch_size = patch_size
+
+            print("Loading pretrain model of DINO for finetuning ...")
+            
+            self.lm_feature = models.resnet50(num_classes = 512)
+            utils.dino_load_pretrained_weights(self.lm_feature, self.lm_pretrained_weights, self.checkpoint_key, self.lm_arch, self.patch_size)
+
+    
+            print("Done !")
+
+        elif self.lm_model_name == "DINO_VIT" :
+            self.checkpoint_key = checkpoint_key
+            self.lm_arch = lm_arch
+            self.patch_size = patch_size
+
+            print("Loading pretrain model of DINO for finetuning ...")
+            
+            self.lm_feature = vits.__dict__["vit_base"](patch_size = self.patch_size, num_classes = 0)
+            
+            self.lm_fc = nn.Linear(768, 512)
+            utils.dino_load_pretrained_weights(self.lm_feature, self.lm_pretrained_weights, self.checkpoint_key, self.lm_arch, self.patch_size)
+           
+            print("Done !")
+
+        elif self.lm_model_name == "MobileVITv2" :
+            print(" TLkqf  durl dho 안들어와")
+            self.lm_feature = mobile_vit2()
+            print(self.lm_feature)
+            self.lm_feature = nn.Sequential(*list(self.lm_feature.children())[:-1])
+            self.conv1x1_lm = nn.Sequential(
+                nn.Conv2d(1024, 512, kernel_size=1),
+                nn.BatchNorm2d(512),
+                nn.ReLU(),
+            )
+            self.avgpool = nn.AvgPool2d(8, stride=1)
+            self.lm_fc = nn.Linear(1024, 512)
+            #print(self.lm_feature)
+        else :
+            print("No models")
+            pass
+        print("@@@@@@@@@@@@@")
+        print(self.lm_model_name)
+        print("@@@@@@@@@@@@@")
         self.classfier = MTL_classfier(num_class=num_class)
+    
         
     def forward(self, x): 
-        if self.em_model_name == "RESNET50" or self.em_model_name == "RESNET18":
-            feat,heads = self.expr(x)
 
-        elif self.em_model_name == "DINO_VIT" or self.em_model_name == "DINO_RESNET" or self.em_model_name =="MobileVITv2":
-            expr = self.expr(x)
-            expr = self.em_fc(expr)
-
-
-
-        if self.lm_model_name == "RESNET50"  or self.lm_model_name == "RESNET18": 
-            lm = self.landmark(x)
+        em_x = None
+        lm_x = None
+        if (self.em_model_name == "RESNET50" and self.lm_model_name is not "RESNET50") or self.em_model_name == "RESNET50" and self.lm_model_name == "RESNET50" : 
+            _, feat, heads = self.em_feature(x)
             
-        elif self.lm_model_name =="MobileVITv2"or self.lm_model_name == "DINO_RESNET":
-            lm = self.landmark(x)
-            lm = self.lm_fc(lm)
-        
+        elif (self.em_model_name == "DINO_RESNET" and self.lm_model_name is not "DINO_RESNET") or self.em_model_name == "DINO_RESNET" and self.lm_model_name == "DINO_RESNET" :
+            feat = self.em_feature(x)
+            feat = self.conv1x1_em(feat)
+            feat_ = self.avgpool(feat)
+            em_x = feat_.view(feat_.size(0), -1)
+            #em_x = self.em_fc(feat)
 
-        if self.em_model_name == "RESNET50"  or self.em_model_name == "RESNET18":    
-            out1,out2 = self.classfier(heads.sum(dim=1),lm)
+        elif (self.em_model_name == "DINO_VIT" and self.lm_model_name is not "DINO_VIT") or self.em_model_name == "DINO_VIT" and self.lm_model_name == "DINO_VIT" :
+            feat = self.em_feature(x)
+            em_x = self.em_fc(feat)
             
-            print(np.shape(out1),np.shape(out2),np.shape(feat),np.shape(heads))
-            return out1,out2,feat,heads
-        
-        elif self.em_model_name == "DINO_VIT" or self.em_model_name == "DINO_RESNET" or self.lm_model_name =="MobileVITv2":
-            out1,out2 = self.classfier(expr,lm)
-            
-            print(np.shape(out1),np.shape(out2))
-            return out1,out2
-        else:
-            pass
-        
+        elif (self.em_model_name == "MobileVITv2" and self.lm_model_name is not "MobileVITv2") or self.em_model_name == "MobileVITv2" and self.lm_model_name == "MobileVITv2" :
+            feat = self.em_feature(x)
+            feat = self.conv1x1_em(feat)
+            feat_ = self.avgpool(feat)
+            em_x = feat_.view(feat_.size(0), -1)
 
+
+        if (self.lm_model_name == "RESNET50" and self.em_model_name is not "RESNET50") or self.lm_model_name == "RESNET50" and self.em_model_name == "RESNET50" :
+            lm_x = self.lm_feature(x)
+            lm_x = self.conv1x1_lm(lm_x)
+            lm_x = lm_x.view(lm_x.size(0), -1)
+
+        elif (self.lm_model_name == "DINO_RESNET" and self.em_model_name is not "DINO_RESNET") or self.lm_model_name == "DINO_RESNET" and self.em_model_name == "DINO_RESNET" :
+            lm_x = self.lm_feature(x)
+
+        elif (self.lm_model_name == "DINO_VIT" and self.em_model_name is not "DINO_VIT") or self.lm_model_name == "DINO_VIT" and self.em_model_name == "DINO_VIT" :
+            lm_x = self.lm_feature(x)
+            lm_x = self.lm_fc(lm_x)
+
+        elif (self.lm_model_name == "MobileVITv2" and self.em_model_name is not "MobileVITv2") or self.em_model_name == "MobileVITv2" and self.lm_model_name == "MobileVITv2" :
+            lm_x = self.lm_feature(x)
+            lm_x = self.conv1x1_lm(lm_x)
+            lm_x = self.avgpool(lm_x)
+            lm_x = lm_x.view(lm_x.size(0), -1)
+                
+        #print(lm_x)
+
+        if self.em_model_name == "RESNET50" :    
+            out1, out2 = self.classfier(heads.sum(dim = 1), lm_x)
+        
+            return out1, out2, feat, heads
+
+        elif self.em_model_name == "DINO_VIT" :        
+            out1, out2 = self.classfier(em_x, lm_x)
+
+            return out1, out2
+        
+        else :
+            feat = feat
+            out1, out2 = self.classfier(em_x, lm_x)
+        
+            return out1, out2, feat
+            

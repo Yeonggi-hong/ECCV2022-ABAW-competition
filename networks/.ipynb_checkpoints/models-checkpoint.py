@@ -1,6 +1,5 @@
 # +
 
-from ast import Pass
 import math
 from re import X
 import networks.utils as utils
@@ -13,7 +12,7 @@ import torch
 import torch.nn.init as init
 from torchvision import models
 
-import networks.vision_transformer as vits
+# -
 __all__ = ['ResNet', 'resnet50']
 
 
@@ -332,40 +331,6 @@ class ResNet(nn.Module):
 
         return model
 
-    def resnet50(**kwargs):
-        """Constructs a ResNet-50 model.
-        """
-        model = FCL_MTL(Bottleneck, [3, 4, 6, 3], **kwargs)
-        return model
-
-class FCL_MTL(nn.Module) :
-    num_classes = 6
-    
-    def __init__(self, block, layers, pretrained_checkpoint_path, num_classes, include_top=True, freeze_base=True) :
-        super(FCL_MTL, self).__init__()
-        self.pretrained_checkpoint_path = pretrained_checkpoint_path
-        
-        self.base = ResNet(block, layers, num_classes, include_top)
-        
-        self.base.load_from_pretrain(self.base, self.pretrained_checkpoint_path)
-        if freeze_base:
-            for param in self.base.parameters():
-                #print
-                param.requires_grad = True
-        self.base = nn.Sequential(*(list(self.base.children())))
-        self.base = self.base[:-1]
-       
-
-    def load_from_pretrain(self, model, pretrained_checkpoint_path):
-        model = utils.load_state_dict(model, pretrained_checkpoint_path)
-
-        return model
-
-
-    def forward(self, x) :
-        x = self.base(x)
-
-        return x
 
 class FCL(nn.Module) :
     
@@ -379,6 +344,7 @@ class FCL(nn.Module) :
         self.base.load_from_pretrain(self.base, self.pretrained_checkpoint_path)
         if freeze_base:
             for param in self.base.parameters():
+                #print
                 param.requires_grad = True
         self.base = nn.Sequential(*(list(self.base.children())))
         self.base = self.base[:-2]
@@ -398,37 +364,35 @@ class FCL(nn.Module) :
 
 
     def forward(self, x) :
+
         x = self.base(x)
 
         return x
 
 class DINO(nn.Module):
     def __init__(self, pretrained_weights, checkpoint_key, arch, patch_size, num_class) :
-        super(DINO, self).__init__()
         
+        super(DINO, self).__init__()
+        #self.num_class = num_class
         self.pretrained_checkpoint_path = pretrained_weights
         self.checkpoint_key = checkpoint_key
         self.arch = arch
         self.patch_size = patch_size
         self.num_class = num_class
         
-        if self.arch == "vit_base":
-            self.model = vits.__dict__["vit_base"](patch_size=16, num_classes=0)
-            self.fc = nn.Linear(768, self.num_class, bias=True)
-            if self.pretrained_checkpoint_path is not None:
-                utils.dino_load_pretrained_weights(self.model, self.pretrained_checkpoint_path, self.checkpoint_key, self.arch, self.patch_size)
-        else:
-            self.model = models.resnet50(num_classes=self.num_class)
-            if self.pretrained_checkpoint_path is not None:
-                utils.dino_load_pretrained_weights(self.model, self.pretrained_checkpoint_path, self.checkpoint_key, self.arch, self.patch_size)
-        
-        
+        self.model = models.resnet50(num_classes=self.num_class)
+        self.fc = nn.Linear(2048, self.num_class, bias=True)
+        #print(self.model)
+        if self.pretrained_checkpoint_path is not None:
+            utils.dino_load_pretrained_weights(self.model, self.pretrained_checkpoint_path, self.checkpoint_key, self.arch, self.patch_size)
+        #print(self.model)
+
+
 
     def forward(self, x) :
 
         x = self.model(x)
-        if self.arch == "vit_base":
-            x = self.fc(x)
+        #x = self.fc(x)
         return x
 
 
@@ -479,6 +443,8 @@ class DINO_DAN(nn.Module):
             print("Done !!")
         
 
+
+
     def forward(self, x) :
 
         x = self.features(x)
@@ -501,9 +467,8 @@ class Finetuning_models(nn.Module) :
         self.pretrained_weights = pretrained_weights
         self.pretrained_model_num_class = num_class
         self.pretrained = pretrained
-        self.num_class = num_class
         self.model = None
-        self.fc = nn.Linear(768, num_class, bias=True)
+       
         if self.model_name == "DINO" :
             print(self.pretrained_weights)
             self.checkpoint_key = checkpoint_key
@@ -511,41 +476,14 @@ class Finetuning_models(nn.Module) :
             self.patch_size = patch_size
             print("Loading pretrain model of DINO for finetuning ...")
     
-            self.model = vits.__dict__["vit_base"](patch_size=self.patch_size, num_classes=self.num_class)
+            self.model = models.resnet50(num_classes = 6)
             
             utils.dino_load_pretrained_weights(self.model, self.pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            print(self.model)
             print("Done !")
             #print(self.model)
+            '''
             
-        
-        elif self.model_name == "DINO_VIT":
-#             print(self.pretrained_weights)
-            self.checkpoint_key = checkpoint_key
-            self.arch = arch
-            self.patch_size = patch_size
-            print("Loading pretrain model of DINO for finetuning ...")
-    
-            self.model = vits.__dict__["vit_base"](patch_size=self.patch_size, num_classes=0)
-            self.fc = nn.Linear(768, self.num_class, bias=True)
-            
-            utils.dino_load_pretrained_weights(self.model, self.pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            print("Done !")
-
-        
-        elif self.model_name == "DINO_RESNET":
-            self.checkpoint_key = checkpoint_key
-            self.arch = arch
-            self.patch_size = patch_size
-            print("Loading pretrain model of DINO for finetuning ...")
-    
-            self.model = models.resnet50(num_classes=6)
-            
-            utils.dino_load_pretrained_weights(self.model, self.pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            print("Done !")
-            
-        
-        
+            '''
         else :
             from collections import OrderedDict
             print(self.pretrained_weights)
@@ -559,318 +497,37 @@ class Finetuning_models(nn.Module) :
                 name = k[7:] 
                 new_state_dict[name] = v 
             self.model.load_state_dict(new_state_dict, strict = True)
+            
+            #if self.pretrained_model_num_class == 8 :
+            #self.model = nn.Sequential(*(list(self.model.children())))
+            #self.model = self.model[:-1]
+            #print(self.model)
             self.fc =  nn.Linear(512, 6) 
             self.bn = nn.BatchNorm1d(6)   
+            #print(self.model)
             
+            #print(self.model)
             
             
     
-    def forward(self, x) :        
-        if self.model_name == "DINO" or self.model_name == "DINO_RESNET" :
-            x = self.model(x)  
+    def forward(self, x) :
+        
+
+        if self.model_name == "DINO" :
+            x = self.model(x)    
             return x
-    
-        elif self.model_name == "DINO_VIT" :
-            x = self.model(x)  
-            x = self.fc(x)
-            #print(np.shape(x))
-            return x
-    
         else:
             out, feat, heads = self.model(x)
+            #print(heads)
             if self.pretrained_model_num_class == 8 :
                 out = self.fc(heads.sum(dim=1))
                 out = self.bn(out)
-            
+                #print(np.shape(out))
+                #x = self.fc(out)
                 return out, feat, heads
             else :
+                #x = self.fc(out)
                 return out, feat, heads
 
 
-
-class mobile_vit2(nn.Module) :
-    def __init__(self) :
-        super(mobile_vit2, self).__init__() 
-        from mobilevitv2.cvnets import get_model
-
-        opts = './mobilevitv2/config/classification/finetune_in21k_to_1k/mobilevit_v2.yaml'
-        #our_pretrined_model_path = '/abaw_4th/DAN/jy_scripts/mobilevitv2/mobilevitv2_results_in21k_ft_256/width_2_0_0/run_1/checkpoint_ema_best.pt'
-        imagenet_pretrained_model_path = '/abaw_4th/DAN/scripts/mobilevitv2/checkpoints/mobilevitv2-2.0.pt'
-        dev_id = getattr(opts, "dev.device_id", None)
-        device = getattr(opts, "dev.device", torch.device("cpu"))
-        if dev_id is None:
-            model_state = torch.load(imagenet_pretrained_model_path, map_location=device)
-            #model_state = torch.load(our_pretrined_model_path, map_location=device)
-        else:
-            model_state = torch.load(imagenet_pretrained_model_path, map_location="cuda:{}".format(dev_id))
-            #model_state = torch.load(our_pretrined_model_path, map_location="cuda:{}".format(dev_id))
-        self.model = get_model(opts)
-        #self.model = self.model.to(device=device)
-        print(self.model)
-        #model_state = torch.load(our_pretrined_model_path)
-        model_state = torch.load(imagenet_pretrained_model_path)
-        if hasattr(self.model, "module"):
-            self.model.module.load_state_dict(model_state, strict = False)
-        else:
-            self.model.load_state_dict(model_state, strict = False)
-
-        self.model = nn.Sequential(*(list(self.model.children())))
-        self.model = self.model[:-1]
-        self.fc = nn.Linear(1024, 6) 
-
-
-        
-        #print(self.model)
-
-    def forward(self, x) :
-        x = self.model(x)
-        x = self.fc(x)
-
-        return x
-
-class MTL_classfier(nn.Module):
-    def __init__(self, num_class=7):
-        super(MTL_classfier, self).__init__()
-        
-        self.sharedfc1 = nn.Linear(512,256)
-        self.sharedbn1 = nn.BatchNorm1d(256)
-        self.sharedfc2 = nn.Linear(256,128)
-        self.sharedbn2 = nn.BatchNorm1d(128)
-        self.encode1 = nn.Linear(128,68)
-        self.encode2 = nn.Linear(128,68)
-        
-        self.fc = nn.Linear(128, num_class)
-        self.bn = nn.BatchNorm1d(num_class)
-    def forward(self, x1, x2):
-        
-        out1 = self.sharedfc1(x1)
-        out1 = self.sharedbn1(out1)
-        out1 = self.sharedfc2(out1)
-        out1 = self.sharedbn2(out1)
-        out1 = self.fc(out1)
-        out1 = self.bn(out1)
-
-        out2 = self.sharedfc1(x2)
-        out2 = self.sharedbn1(out2)
-        out2 = self.sharedfc2(out2)
-        out2 = self.sharedbn2(out2)   
-        ox = self.encode1(out2)    
-        oy = self.encode2(out2)
-        ox=ox.unsqueeze(2)
-        oy=oy.unsqueeze(2)
-
-        out2 = torch.cat([ox,oy], dim=2)  
-            
-   
-        return out1, out2
-include_top = True 
-N_IDENTITY = 8631 
-
-class MTL_ResNet18(nn.Module):
-    def __init__(self, num_head, num_class=8, pretrained=True):
-        super(MTL_ResNet18, self).__init__()
-        
-        resnet = models.resnet18(pretrained)
-        
-        if pretrained:
-            checkpoint = torch.load('../models/resnet18_msceleb.pth')
-            resnet.load_state_dict(checkpoint['state_dict'], strict = True)
-
-        self.features = nn.Sequential(*list(resnet.children())[:-2])
-        self.num_head = num_head
-        for i in range(num_head):
-            setattr(self,"cat_head%d" %i, CrossAttentionHead())
-        self.sig = nn.Sigmoid()
-        self.fc = nn.Linear(512, num_class)
-        self.bn = nn.BatchNorm1d(num_class)
-
-
-    def forward(self, x):
-        x = self.features(x)
-        heads = []
-        for i in range(self.num_head):
-            heads.append(getattr(self,"cat_head%d" %i)(x))
-        
-        heads = torch.stack(heads).permute([1,0,2])
-        
-        return x, heads
-
-class Landmark_ResNet18(nn.Module):
-    def __init__(self,pretrained=True):
-        super(Landmark_ResNet18, self).__init__()
-        
-        self.resnet = models.resnet18(pretrained)
-        
-        if pretrained:
-            checkpoint = torch.load('../models/resnet18_msceleb.pth')
-            self.resnet.load_state_dict(checkpoint['state_dict'], strict = True)
-
-        self.fc =  nn.Linear(1000,512)
-
-    def forward(self, x):
-        x = self.resnet(x)
-        x = self.fc(x)
-        return x
-        
-class MTL_ResNet50(nn.Module):
-    def __init__(self,num_head=4,pretrained_path=""):
-        super(MTL_ResNet50, self).__init__()
-    
-        
-        self.resnet = ResNet.resnet50(pretrained_checkpoint_path=pretrained_path, num_classes=N_IDENTITY, include_top=include_top)
-        self.features = nn.Sequential(*list(self.resnet.children())[0][:-1])
-
-        self.num_head = num_head
-        for i in range(num_head):
-            setattr(self,"cat_head%d" %i, CrossAttentionHead())
-        self.sig = nn.Sigmoid()
-        self.conv1x1_1 = nn.Sequential(
-            nn.Conv2d(2048, 1024, kernel_size=1),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(),
-        )
-        self.conv1x1_2 = nn.Sequential(
-            nn.Conv2d(1024, 512, kernel_size=1),
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-        )
-    def forward(self, x):
-        x = self.features(x)
-        x=self.conv1x1_1(x) 
-        x=self.conv1x1_2(x)
-
-        heads = []
-        for i in range(self.num_head):
-            heads.append(getattr(self,"cat_head%d" %i)(x))
-        
-        heads = torch.stack(heads).permute([1,0,2])
-        if heads.size(1)>1:
-            heads = F.log_softmax(heads,dim=1)
-        
-        return x , heads
-
-class Landmark_ResNet50(nn.Module) :
-    def __init__(self,pretrained_path=""):
-        super(Landmark_ResNet50, self).__init__()
-        self.resnet = ResNet.resnet50(pretrained_checkpoint_path=pretrained_path, num_classes=N_IDENTITY, include_top=include_top)
-
-        self.lmfc = nn.Linear(2048,512)
-        self.lmbn = nn.BatchNorm1d(512)
-
-    def forward(self, x):
-        x2 = self.resnet(x)
-        x2 = x2.squeeze()
-        
-        x2 = self.lmfc(x2)
-        x2 = self.lmbn(x2)
-        return x2
-
-class MTL_finetuning(nn.Module) :
-    def __init__(self,em_model_name="RESNET18",lm_model_name="RESNET18", lm_pretrained_weights=None,em_pretrained_weights=None, checkpoint_key=None, arch=None, patch_size=None, 
-                            num_class=None, pretrained=None, num_head=None) :
-        super(MTL_finetuning, self).__init__() 
-        self.em_model_name= em_model_name
-        self.lm_model_name= lm_model_name
-
-        
-        if self.em_model_name == "RESNET50" :
-            em_pretrained_weights = "../models/resnet50_ft_weight.pkl"
-        if self.lm_model_name == "RESNET50" :
-            lm_pretrained_weights = "../models/resnet50_ft_weight.pkl"
-        
-        
-        if self.em_model_name == "RESNET50" :
-            self.expr = MTL_ResNet50(num_head=num_head,pretrained_path= em_pretrained_weights)
-        elif self.em_model_name == "DINO_RESNET":
-            
-            self.checkpoint_key = "student"
-            self.arch = "resnet50"
-            self.patch_size = 8
-            print("Loading pretrain model of DINO for finetuning ...")
-    
-            self.model = models.resnet50(num_classes=6)
-            
-            utils.dino_load_pretrained_weights(self.model, em_pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            self.expr = nn.Sequential(*list(self.model.children())[:-1])
-            self.lm.fc(6124,512)
-            print("Done !")
-        elif self.em_model_name == "RESNET18":
-            self.expr = MTL_ResNet18(num_head=num_head, num_class=num_class)
-        elif self.em_model_name == "DINO_VIT":
-#             print(self.pretrained_weights)
-            self.checkpoint_key = checkpoint_key
-            self.arch = arch
-            self.patch_size = patch_size
-            print("Loading pretrain model of DINO for finetuning ...")
-    
-            self.expr = vits.__dict__["vit_base"](patch_size=self.patch_size, num_classes=0)
-            self.em_fc = nn.Linear(768,512, bias=True)
-            
-            utils.dino_load_pretrained_weights(self.expr, lm_pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            print("Done !")
-        elif self.em_model_name =="MobileVITv2":
-            self.model = mobile_vit2()
-            self.expr = nn.Sequential(*list(self.model.children())[:-1])
-            self.em_fc = nn.Linear(1024, 512)
-        else:
-            pass
-        
-        if self.lm_model_name == "RESNET50" :
-            self.landmark = Landmark_ResNet50(pretrained_path= lm_pretrained_weights)
-        elif self.lm_model_name == "RESNET18":
-            self.landmark = Landmark_ResNet18()
-        elif self.lm_model_name == "DINO_RESNET":
-            self.checkpoint_key = "student"
-            self.arch = "resnet50"
-            self.patch_size = 8
-            print("Loading pretrain model of DINO for finetuning ...")
-    
-            self.model = models.resnet50(num_classes=6)
-            
-            utils.dino_load_pretrained_weights(self.lm, lm_pretrained_weights, self.checkpoint_key, self.arch, self.patch_size)
-            self.landmark = nn.Sequential(*list(self.lm.children()))[:-1]
-            self.lm_fc(6124,512)
-            print("Done !")
-        
-        elif self.lm_model_name =="MobileVITv2":
-            self.model = mobile_vit2()
-            self.landmark = nn.Sequential(*list(self.model.children()))[:-1]
-            self.lm_fc = nn.Linear(1024, 512)
-        else:
-            pass
-
-        self.classfier = MTL_classfier(num_class=num_class)
-        
-    def forward(self, x): 
-        if self.em_model_name == "RESNET50" or self.em_model_name == "RESNET18":
-            feat,heads = self.expr(x)
-
-        elif self.em_model_name == "DINO_VIT" or self.em_model_name == "DINO_RESNET" or self.em_model_name =="MobileVITv2":
-            expr = self.expr(x)
-            expr = self.em_fc(expr)
-
-
-
-        if self.lm_model_name == "RESNET50"  or self.lm_model_name == "RESNET18": 
-            lm = self.landmark(x)
-            
-        elif self.lm_model_name =="MobileVITv2"or self.lm_model_name == "DINO_RESNET":
-            lm = self.landmark(x)
-            lm = self.lm_fc(lm)
-        
-
-        if self.em_model_name == "RESNET50"  or self.em_model_name == "RESNET18":    
-            out1,out2 = self.classfier(heads.sum(dim=1),lm)
-            
-            print(np.shape(out1),np.shape(out2),np.shape(feat),np.shape(heads))
-            return out1,out2,feat,heads
-        
-        elif self.em_model_name == "DINO_VIT" or self.em_model_name == "DINO_RESNET" or self.lm_model_name =="MobileVITv2":
-            out1,out2 = self.classfier(expr,lm)
-            
-            print(np.shape(out1),np.shape(out2))
-            return out1,out2
-        else:
-            pass
-        
 
