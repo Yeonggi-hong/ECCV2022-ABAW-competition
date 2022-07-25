@@ -348,7 +348,7 @@ def run_training():
             running_f1 = np.mean(f1)
 
             tqdm.write("F1 score by classes: %.4f %.4f %.4f %.4f %.4f %.4f" %(f1[0], f1[1], f1[2], f1[3], f1[4], f1[5]))
-            tqdm.write("[Epoch %d] Validation accuracy:%.4f. Loss:%.3f F1 score: %.4f Loss_real:%.3f F1_real score: %.4f" % (epoch, acc, running_loss, running_f1, running_loss_real,running_f1_real))
+            tqdm.write("[Epoch %d] Validation accuracy:%.4f. Loss:%.3f F1 score: %.4f" % (epoch, acc, running_loss, running_f1))
             tqdm.write("best_acc:" + str(best_acc))
             tqdm.write("best_f1: " + str(max(best_f1, running_f1)))
 
